@@ -1,0 +1,48 @@
+# compilation and distribution
+__pycache__
+_ext
+*.pyc
+*.so
+maskrcnn_benchmark.egg-info/
+build/
+dist/
+
+# pytorch/python/numpy formats
+*.pth
+*.pkl
+*.npy
+
+# ipython/jupyter notebooks
+*.ipynb
+**/.ipynb_checkpoints/
+
+# Editor temporaries
+*.swn
+*.swo
+*.swp
+*~
+
+# Pycharm editor settings
+.idea
+
+# vscode editor settings
+.vscode
+.env
+
+# MacOS
+.DS_Store
+
+# project dirs
+/pretrained_models
+/vg_tsv
+/wandb
+/runs
+/datasets
+/models
+/output
+/exps
+/pretrained_models/**
+.ptconfig
+.ptignore
+run_philly.py
+vrd_philly_tools_submit.yaml
