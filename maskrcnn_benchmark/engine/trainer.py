@@ -14,6 +14,7 @@ from maskrcnn_benchmark.utils.comm import get_world_size, synchronize
 from maskrcnn_benchmark.utils.metric_logger import MetricLogger
 from maskrcnn_benchmark.engine.inference import inference
 from maskrcnn_benchmark.utils.amp import autocast, GradScaler
+import wandb
 
 
 def reduce_loss_dict(loss_dict):
@@ -143,6 +144,13 @@ def do_train(
                     memory=torch.cuda.max_memory_allocated() / 1024.0 / 1024.0,
                 )
             )
+            # print(str(meters))
+            # print(meters)
+            wandb.log({"loss": meters.meters['loss'].avg})
+            wandb.log(
+                {'loss_obj_classifier': meters.meters['loss_obj_classifier'].avg})
+            wandb.log(
+                {'loss_pred_classifier': meters.meters['loss_pred_classifier'].avg})
 
         if data_loader_val is not None and test_period > 0 and iteration % test_period == 0:
             meters_val = MetricLogger(delimiter="  ")
@@ -161,6 +169,7 @@ def do_train(
                 expected_results_sigma_tol=cfg.TEST.EXPECTED_RESULTS_SIGMA_TOL,
                 output_folder=None,
             )
+
             synchronize()
             model.train()
             with torch.no_grad():

@@ -33,7 +33,7 @@ dist/
 .DS_Store
 
 # project dirs
-/pretrained_models
+/pretrained_modelsce
 /vg_tsv
 /wandb
 /runs

@@ -105,6 +105,8 @@ class SceneParser(GeneralizedRCNN):
         self.cross_attention = CrossTransformer(sm_dim=sm_dim, lg_dim=lg_dim, depth=cross_attn_depth,
                                                 heads=cross_attn_heads, dim_head=cross_attn_dim_head, dropout=dropout)
 
+        self.norm = torch.nn.BatchNorm2d(256)
+
         # wandb.watch(self.relation_head)
         # self.writer = SummaryWriter('runs/model_check')
 
@@ -441,7 +443,8 @@ class SceneParser(GeneralizedRCNN):
         attn_box_features, attn_features = self.cross_attention(
             box_features, features[4].view(b, c, w * h))
         # prediction.add_field('box_features', attn_box_features.squeeze(0))
-        features[4][:] = features[4][:] + attn_features.view(b, c, w, h)[:]
+        features[4][:] = self.norm(
+            features[4][:] + attn_features.view(b, c, w, h)[:])
 
         # features[4][i] = torch.randn(1, 256, 20, 20)
         # print(attn_box_features.shape)
