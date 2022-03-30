@@ -106,6 +106,7 @@ class SceneParser(GeneralizedRCNN):
                                                 heads=cross_attn_heads, dim_head=cross_attn_dim_head, dropout=dropout)
 
         self.norm = torch.nn.BatchNorm2d(256)
+        self.norm2 = torch.nn.BatchNorm2d(1)
 
         # wandb.watch(self.relation_head)
         # self.writer = SummaryWriter('runs/model_check')
@@ -385,36 +386,8 @@ class SceneParser(GeneralizedRCNN):
         # TODO: add force_relations logic
         # pdb.set_trace()
 
-        # print(len(predictions))
-
-        # print(predictions[0])
-        # print(predictions[0].fields())
-        # print(predictions[0].get_field('boxes_all')[0])
-        # print(len(predictions[0].get_field('box_features')))
-        # print(predictions[0].get_field('box_features'))
-
-        # print(len(features))
-        # print(features[0].shape)
-        # print(features[1].shape)
-        # print(features[2].shape)
-        # print(features[3].shape)
-        # print(features[4].shape)
-
-        # c, w, h = features[4][0].shape
-        # print(features[4][0].shape)
-
-        # sm_dim = 1024
-        # lg_dim = w * h
-        # cross_attn_depth = 2
-        # cross_attn_heads = 8
-        # cross_attn_dim_head = 64
-        # dropout = 0.1
-
-        # because the number of boxes predicted for each image in a batch is not same
-        # features = [feature.detach() for feature in features]  # coupled
-        # print(predictions[0].get_field('box_features').requires_grad)
-        # print(features[4].requires_grad)
         boxes = []
+
         for i, prediction in enumerate(predictions):
             # break
             box_features = prediction.get_field('box_features')
@@ -432,75 +405,33 @@ class SceneParser(GeneralizedRCNN):
                     box_features = torch.cat(
                         [box_features, box_features[:100 - size[0]]])
             boxes.append(box_features)
-        # print([b.shape for b in boxes])
+
         box_features = torch.stack(boxes, dim=0)
-        # box_features = box_features.detach()
-        # print(box_features.shape)
+
         b, c, w, h = features[4].shape
-        # print(features[4].shape)
-        # boxf = box_features.unsqueeze(0)
-        # backf = features[4][i].view(-1, w * h).unsqueeze(0)
+
         attn_box_features, attn_features = self.cross_attention(
             box_features, features[4].view(b, c, w * h))
-        # prediction.add_field('box_features', attn_box_features.squeeze(0))
+
         features[4][:] = self.norm(
             features[4][:] + attn_features.view(b, c, w, h)[:])
 
-        # features[4][i] = torch.randn(1, 256, 20, 20)
-        # print(attn_box_features.shape)
-        # print(box_features.shape)
-        # print(attn_features.view(b, c, w, h).shape)
-        # print(attn_features.view(b, c, w, h).shape)
-        # print(features[4].shape)
-        # print(dir(features))
-        del attn_box_features
-        del box_features
-        # del attn_features
-        torch.cuda.empty_cache()
+        x_obj_features = self.norm2(
+            (box_features + attn_box_features).unsqueeze(1)).squeeze(1)
 
-        # break
-        # del attn_features
-        # features[4] = features[4].detach()
-        # print(sum([p.numel() for p in self.cross_attention.parameters()]))
+        for i, p in enumerate(predictions):
+            b = p.get_field('box_features').size(0)
+            p.add_field('box_features', x_obj_features[i][:b])
 
-        # summary(self.cross_attention, input_size=[
-        #     (1, 1, 400), (1, 1, 1024)], dtypes=['torch.IntTensor'])
-
-        # print(self.cross_attention)
-
-        # print([features[i].requires_grad for i in range(5)])
+        # torch.cuda.empty_cache()
 
         # self.writer.add_graph(self.cross_attention, (predictions[0].get_field(
         #     'box_features').unsqueeze(0), features[4][0].view(-1, 20 * 20).unsqueeze(0)))
-        # import sys
-        # sys.exit(0)
-
-        # print(features[4].shape)
 
         # prediction_pairs --> contains the bounding boxes
         x_pairs, prediction_pairs, relation_losses = self.relation_head(
             features, predictions, targets)
 
-        # print(len(x_pairs))
-        # print(x_pairs[0])
-        # print(x_pairs[1])
-        # print(x_pairs[0].shape)
-        # print(x_pairs[1].shape)
-        # print(len(prediction_pairs))
-        # print(prediction_pairs[0])
-        # print(prediction_pairs[0].fields())
-        # print(len(prediction_pairs[0]))
-        # print(prediction_pairs[0].fields())
-        # idx_pairs = prediction_pairs[0].get_field('idx_pairs')
-        # labels = prediction_pairs[0].get_field('labels')
-        # print(idx_pairs[:, 0].max(), idx_pairs[:, 1].max())
-        # print(idx_pairs)
-        # print(labels)
-        # print(labels.shape)
-        # print(len(idx_pairs))
-
-        # import sys
-        # sys.exit(0)
         # pdb.set_trace()
         scene_parser_losses.update(relation_losses)
 

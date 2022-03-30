@@ -45,6 +45,7 @@ torch.manual_seed(1000)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 torch.autograd.set_detect_anomaly(True)
+# os.environ['WANDB_SILENT'] = "true"
 wandb.init(project="sgg-attention-project", entity="ai-breaker")
 
 
