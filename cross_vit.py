@@ -1,3 +1,4 @@
+from matplotlib.style import context
 import torch
 from torch import nn, einsum
 import torch.nn.functional as F
@@ -69,10 +70,6 @@ class Attention(nn.Module):
 
         if kv_include_self:
             # cross attention requires CLS token includes itself as key / value
-            # print(x.shape)
-            # print(context.shape)
-            # import sys
-            # sys.exit(0)
             context = torch.cat((x, context), dim=1)
 
         qkv = (self.to_q(x), *self.to_kv(context).chunk(2, dim=-1))
@@ -159,6 +156,30 @@ class CrossTransformer(nn.Module):
 
         sm_tokens = torch.cat((sm_cls, sm_patch_tokens), dim=1)
         lg_tokens = torch.cat((lg_cls, lg_patch_tokens), dim=1)
+        return sm_tokens, lg_tokens
+
+
+class CrossTransformerV2(nn.Module):
+    def __init__(self, sm_dim, lg_dim, depth, heads, dim_head, dropout):
+        super().__init__()
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                ProjectInOut(sm_dim, lg_dim, PreNorm(lg_dim, Attention(
+                    lg_dim, heads=heads, dim_head=dim_head, dropout=dropout))),
+                ProjectInOut(lg_dim, sm_dim, PreNorm(sm_dim, Attention(
+                    sm_dim, heads=heads, dim_head=dim_head, dropout=dropout)))
+            ]))
+
+    def forward(self, sm_tokens, lg_tokens):
+
+        for sm_attend_lg, lg_attend_sm in self.layers:
+
+            sm_tokens = sm_attend_lg(
+                sm_tokens, context=lg_tokens) + sm_tokens
+            lg_tokens = lg_attend_sm(
+                lg_tokens, context=sm_tokens) + lg_tokens
+
         return sm_tokens, lg_tokens
 
 # multi-scale encoder

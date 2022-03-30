@@ -15,7 +15,7 @@ from .relation_head.roi_relation_box_feature_extractors import make_roi_relation
 from .attribute_head.attribute_head import build_roi_attribute_head
 
 from torchvision.utils import save_image
-from cross_vit import CrossTransformer
+from cross_vit import Attention, CrossTransformerV2, CrossTransformer
 import wandb
 from torchinfo import summary
 from torch.utils.tensorboard import SummaryWriter
@@ -102,14 +102,17 @@ class SceneParser(GeneralizedRCNN):
         cross_attn_dim_head = 64
         dropout = 0.1
 
-        self.cross_attention = CrossTransformer(sm_dim=sm_dim, lg_dim=lg_dim, depth=cross_attn_depth,
-                                                heads=cross_attn_heads, dim_head=cross_attn_dim_head, dropout=dropout)
+        self.cross_attention = CrossTransformerV2(sm_dim=sm_dim, lg_dim=lg_dim, depth=cross_attn_depth,
+                                                  heads=cross_attn_heads, dim_head=cross_attn_dim_head, dropout=dropout)
 
         self.norm = torch.nn.BatchNorm2d(256)
         self.norm2 = torch.nn.BatchNorm2d(1)
 
+        # self.attend = Attention(
+        #     dim=sm_dim, heads=cross_attn_heads, dim_head=64, dropout=dropout)
+
         # wandb.watch(self.relation_head)
-        # self.writer = SummaryWriter('runs/model_check')
+        # self.writer = SummaryWriter('runs/model_check4')
 
     def cfg_check(self):
         if self.cfg.MODEL.ROI_RELATION_HEAD.MODE == 'predcls':
@@ -408,10 +411,16 @@ class SceneParser(GeneralizedRCNN):
 
         box_features = torch.stack(boxes, dim=0)
 
+        # self.writer.add_graph(
+        #     self.attend, (box_features[:, :1, :], box_features[:, 1:, :]))
+
+        # import sys
+        # sys.exit(0)
+
         b, c, w, h = features[4].shape
 
         attn_box_features, attn_features = self.cross_attention(
-            box_features, features[4].view(b, c, w * h))
+            box_features.clone().detach(), features[4].view(b, c, w * h).clone().detach())
 
         features[4][:] = self.norm(
             features[4][:] + attn_features.view(b, c, w, h)[:])
@@ -420,13 +429,10 @@ class SceneParser(GeneralizedRCNN):
             (box_features + attn_box_features).unsqueeze(1)).squeeze(1)
 
         for i, p in enumerate(predictions):
-            b = p.get_field('box_features').size(0)
-            p.add_field('box_features', x_obj_features[i][:b])
+            s = p.get_field('box_features').size(0)
+            p.add_field('box_features', x_obj_features[i][:s])
 
         # torch.cuda.empty_cache()
-
-        # self.writer.add_graph(self.cross_attention, (predictions[0].get_field(
-        #     'box_features').unsqueeze(0), features[4][0].view(-1, 20 * 20).unsqueeze(0)))
 
         # prediction_pairs --> contains the bounding boxes
         x_pairs, prediction_pairs, relation_losses = self.relation_head(
