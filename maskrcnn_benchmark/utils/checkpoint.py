@@ -55,7 +55,8 @@ class Checkpointer(object):
             f = self.get_checkpoint_file()
         if not f:
             # no checkpoint could be found
-            self.logger.info("No checkpoint found. Initializing model from scratch")
+            self.logger.info(
+                "No checkpoint found. Initializing model from scratch")
             return {}
         self.logger.info("Loading checkpoint from {}".format(f))
         checkpoint = self._load_file(f)
@@ -91,7 +92,9 @@ class Checkpointer(object):
         with open(save_file, "w") as f:
             f.write(last_filename)
 
+    # NOTE: device changed to GPU
     def _load_file(self, f):
+        # return torch.load(f, map_location=torch.device("cuda"))
         return torch.load(f, map_location=torch.device("cpu"))
 
     def _load_model(self, checkpoint):
@@ -120,7 +123,7 @@ class DetectronCheckpointer(Checkpointer):
             paths_catalog = import_file(
                 "maskrcnn_benchmark.config.paths_catalog", self.cfg.PATHS_CATALOG, True
             )
-            catalog_f = paths_catalog.ModelCatalog.get(f[len("catalog://") :])
+            catalog_f = paths_catalog.ModelCatalog.get(f[len("catalog://"):])
             self.logger.info("{} points to {}".format(f, catalog_f))
             f = catalog_f
         # download url files
