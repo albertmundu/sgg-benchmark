@@ -238,6 +238,14 @@ class FastRCNNLossComputation(object):
 
         return blobs
 
+    # NOTE: Added for batch-wise operation
+    def contrastive_loss_sample_batch(self, cfg, proposals, targets):
+        proposals_pairs = []
+        for p, t in zip(proposals, targets):
+            proposals_pairs.append(
+                self.contrastive_loss_sample(cfg, [p], [t])[0])
+        return proposals_pairs
+
     def contrastive_loss_sample(self, cfg, proposals, targets):
         """Reldn Contrastive loss: generate a random sample of RoIs comprising foreground 
         and background examples.

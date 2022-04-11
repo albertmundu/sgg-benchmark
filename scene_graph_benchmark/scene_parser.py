@@ -62,6 +62,7 @@ class SceneParser(GeneralizedRCNN):
         self.detector_pre_calculated = self.cfg.MODEL.ROI_RELATION_HEAD.DETECTOR_PRE_CALCULATED
         self.detector_force_boxes = self.cfg.MODEL.ROI_BOX_HEAD.FORCE_BOXES
         self.cfg_check()
+        self.attend = False
 
         feature_dim = self.backbone.out_channels
         if not self.cfg.MODEL.ROI_RELATION_HEAD.SHARE_CONV_BACKBONE:
@@ -94,19 +95,20 @@ class SceneParser(GeneralizedRCNN):
                 self.obj_feature_extractor = make_roi_relation_box_feature_extractor(
                     cfg, feature_dim)
 
-        w, h = 20, 20
-        sm_dim = 1024
-        lg_dim = w * h
-        cross_attn_depth = 2
-        cross_attn_heads = 4
-        cross_attn_dim_head = 64
-        dropout = 0.1
+        if self.attend:
+            w, h = 20, 20
+            sm_dim = 1024
+            lg_dim = w * h
+            cross_attn_depth = 4  # 2
+            cross_attn_heads = 6  # 4
+            cross_attn_dim_head = 64
+            dropout = 0.1
 
-        self.cross_attention = CrossTransformerV2(sm_dim=sm_dim, lg_dim=lg_dim, depth=cross_attn_depth,
-                                                  heads=cross_attn_heads, dim_head=cross_attn_dim_head, dropout=dropout)
+            self.cross_attention = CrossTransformerV2(sm_dim=sm_dim, lg_dim=lg_dim, depth=cross_attn_depth,
+                                                      heads=cross_attn_heads, dim_head=cross_attn_dim_head, dropout=dropout)
 
-        self.norm = torch.nn.BatchNorm2d(256)
-        self.norm2 = torch.nn.BatchNorm2d(1)
+            self.norm = torch.nn.BatchNorm2d(256)
+            self.norm2 = torch.nn.BatchNorm2d(1)
 
         # self.attend = Attention(
         #     dim=sm_dim, heads=cross_attn_heads, dim_head=64, dropout=dropout)
@@ -388,49 +390,50 @@ class SceneParser(GeneralizedRCNN):
         # The predictions_pred contains idx_pairs (M*2) and scores (M*Pred_Cat); see Jianwei's code
         # TODO: add force_relations logic
         # pdb.set_trace()
+        if self.attend:
+            boxes = []
 
-        boxes = []
-
-        for i, prediction in enumerate(predictions):
-            # break
-            box_features = prediction.get_field('box_features')
-            size = box_features.shape
-            # print(size)
-            if size[0] != 100:
-                d = (100 // size[0])
-                r = 100 - size[0] * d
-                if size[0] < (100 - size[0]):
-                    box_features = torch.cat([box_features for _ in range(d)])
-                    if r > 0:
+            for i, prediction in enumerate(predictions):
+                # break
+                box_features = prediction.get_field('box_features')
+                size = box_features.shape
+                # print(size)
+                if size[0] != 100:
+                    d = (100 // size[0])
+                    r = 100 - size[0] * d
+                    if size[0] < (100 - size[0]):
                         box_features = torch.cat(
-                            [box_features, box_features[:r]])
-                else:
-                    box_features = torch.cat(
-                        [box_features, box_features[:100 - size[0]]])
-            boxes.append(box_features)
+                            [box_features for _ in range(d)])
+                        if r > 0:
+                            box_features = torch.cat(
+                                [box_features, box_features[:r]])
+                    else:
+                        box_features = torch.cat(
+                            [box_features, box_features[:100 - size[0]]])
+                boxes.append(box_features)
 
-        box_features = torch.stack(boxes, dim=0)
+            box_features = torch.stack(boxes, dim=0)
 
-        # self.writer.add_graph(
-        #     self.attend, (box_features[:, :1, :], box_features[:, 1:, :]))
+            # self.writer.add_graph(
+            #     self.attend, (box_features[:, :1, :], box_features[:, 1:, :]))
 
-        # import sys
-        # sys.exit(0)
+            # import sys
+            # sys.exit(0)
 
-        b, c, w, h = features[4].shape
+            b, c, w, h = features[4].shape
 
-        attn_box_features, attn_features = self.cross_attention(
-            box_features.clone().detach(), features[4].view(b, c, w * h).clone().detach())
+            attn_box_features, attn_features = self.cross_attention(
+                box_features.clone().detach(), features[4].view(b, c, w * h).clone().detach())
 
-        features[4][:] = self.norm(
-            features[4][:] + attn_features.view(b, c, w, h)[:])
+            features[4][:] = self.norm(
+                features[4][:] + attn_features.view(b, c, w, h)[:])
 
-        x_obj_features = self.norm2(
-            (box_features + attn_box_features).unsqueeze(1)).squeeze(1)
+            x_obj_features = self.norm2(
+                (box_features + attn_box_features).unsqueeze(1)).squeeze(1)
 
-        for i, p in enumerate(predictions):
-            s = p.get_field('box_features').size(0)
-            p.add_field('box_features', x_obj_features[i][:s])
+            for i, p in enumerate(predictions):
+                s = p.get_field('box_features').size(0)
+                p.add_field('box_features', x_obj_features[i][:s])
 
         # torch.cuda.empty_cache()
 

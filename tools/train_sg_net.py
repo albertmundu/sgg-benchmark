@@ -119,7 +119,7 @@ def train(cfg, local_rank, distributed):
     return model
 
 
-def run_test(cfg, model, distributed):
+def run_test_buggy(cfg, model, distributed):
     if distributed:
         model = model.module
     torch.cuda.empty_cache()  # TODO check if it helps
