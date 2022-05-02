@@ -15,7 +15,8 @@ from .relation_head.roi_relation_box_feature_extractors import make_roi_relation
 from .attribute_head.attribute_head import build_roi_attribute_head
 
 from torchvision.utils import save_image
-from cross_vit import Attention, CrossTransformerV2, CrossTransformer
+from .cross_vit import Attention, CrossTransformerV2, CrossTransformer
+from .senet import SqueezeLayer, ExcitationLayer
 import wandb
 from torch.utils.tensorboard import SummaryWriter
 
@@ -95,20 +96,24 @@ class SceneParser(GeneralizedRCNN):
                     cfg, feature_dim)
 
         if self.attend:
-            w, h = 20, 20
-            sm_dim = 1024
-            lg_dim = w * h
-            cross_attn_depth = 4  # 2
-            cross_attn_heads = 6  # 4
-            cross_attn_dim_head = 64
+            sm_dim, lg_dim = 1024, 1024
+            ca_depth, ca_heads = 6, 8
+            ca_dim_head = 64
             dropout = 0.1
 
-            self.cross_attention = CrossTransformerV2(sm_dim=sm_dim, lg_dim=lg_dim, depth=cross_attn_depth,
-                                                      heads=cross_attn_heads, dim_head=cross_attn_dim_head, dropout=dropout)
+            # Squeeze & Excitation Networks
+            self.sqnet = []
+            self.exnet = []
+            self.ca = []
+            for i in range(5):
+                self.ca.append(CrossTransformerV2(sm_dim=sm_dim, lg_dim=lg_dim, depth=ca_depth,
+                               heads=ca_heads, dim_head=ca_dim_head, dropout=dropout))
+                self.sqnet.append(SqueezeLayer(in_channel=256))
+                self.exnet.append(ExcitationLayer(
+                    in_channel=1024, out_channel=256))
 
-            self.norm = torch.nn.BatchNorm2d(256)
-            self.norm2 = torch.nn.BatchNorm2d(1)
-
+            self.norm_layer0 = torch.nn.BatchNorm2d(256)
+            self.norm_layer1 = torch.nn.BatchNorm2d(1)
         # self.attend = Attention(
         #     dim=sm_dim, heads=cross_attn_heads, dim_head=64, dropout=dropout)
 
@@ -412,6 +417,13 @@ class SceneParser(GeneralizedRCNN):
                 boxes.append(box_features)
 
             box_features = torch.stack(boxes, dim=0)
+
+        if self.attend:
+            boxes = []
+
+            for i, p in enumerate(predictions):
+                bf = p.get_field('box_features')
+                sz = bf.shape
 
             # self.writer.add_graph(
             #     self.attend, (box_features[:, :1, :], box_features[:, 1:, :]))
