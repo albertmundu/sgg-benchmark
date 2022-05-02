@@ -17,7 +17,6 @@ from .attribute_head.attribute_head import build_roi_attribute_head
 from torchvision.utils import save_image
 from cross_vit import Attention, CrossTransformerV2, CrossTransformer
 import wandb
-from torchinfo import summary
 from torch.utils.tensorboard import SummaryWriter
 
 
