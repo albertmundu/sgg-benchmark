@@ -2,9 +2,11 @@
 """
 Implements the Scene Parser framework
 """
+from xml.sax.handler import feature_string_interning
 from matplotlib import projections
 import numpy as np
 import torch
+import torch.nn as nn
 
 from maskrcnn_benchmark.structures.bounding_box import BoxList
 from maskrcnn_benchmark.structures.image_list import to_image_list
@@ -17,8 +19,28 @@ from .attribute_head.attribute_head import build_roi_attribute_head
 from torchvision.utils import save_image
 from .cross_vit import Attention, CrossTransformerV2, CrossTransformer
 from .senet import SqueezeLayer, ExcitationLayer
-import wandb
+# import wandb
 from torch.utils.tensorboard import SummaryWriter
+
+
+class CrossAttention(torch.nn.Module):
+    def __init__(self, sm_dim=1024, lg_dim=1024, ca_depth=6, ca_heads=8, ca_dim_head=64, dropout=0.1):
+        super(CrossAttention, self).__init__()
+
+        # Squeeze & Excitation Networks
+
+        self.ca = CrossTransformerV2(sm_dim=sm_dim, lg_dim=lg_dim, depth=ca_depth,
+                                     heads=ca_heads, dim_head=ca_dim_head, dropout=dropout)
+        self.sqnet = SqueezeLayer(in_channel=256)
+        self.exnet = ExcitationLayer(in_channel=1024, out_channel=256)
+
+    def forward(self, feat, bbox_feat):
+        sqfeat = self.sqnet(feat)
+        abox_feat, afeat = self.ca(bbox_feat, sqfeat.unsqueeze(1))
+
+        afeat = self.exnet(feat, afeat.squeeze(1))
+
+        return abox_feat, afeat
 
 
 class SceneParserOutputs(object):
@@ -62,7 +84,7 @@ class SceneParser(GeneralizedRCNN):
         self.detector_pre_calculated = self.cfg.MODEL.ROI_RELATION_HEAD.DETECTOR_PRE_CALCULATED
         self.detector_force_boxes = self.cfg.MODEL.ROI_BOX_HEAD.FORCE_BOXES
         self.cfg_check()
-        self.attend = False
+        self.attend = True
 
         feature_dim = self.backbone.out_channels
         if not self.cfg.MODEL.ROI_RELATION_HEAD.SHARE_CONV_BACKBONE:
@@ -97,20 +119,12 @@ class SceneParser(GeneralizedRCNN):
 
         if self.attend:
             sm_dim, lg_dim = 1024, 1024
-            ca_depth, ca_heads = 6, 8
+            ca_depth, ca_heads = 2, 4
             ca_dim_head = 64
             dropout = 0.1
 
-            # Squeeze & Excitation Networks
-            self.sqnet = []
-            self.exnet = []
-            self.ca = []
-            for _ in range(5):
-                self.ca.append(CrossTransformerV2(sm_dim=sm_dim, lg_dim=lg_dim, depth=ca_depth,
-                               heads=ca_heads, dim_head=ca_dim_head, dropout=dropout))
-                self.sqnet.append(SqueezeLayer(in_channel=256))
-                self.exnet.append(ExcitationLayer(
-                    in_channel=1024, out_channel=256))
+            self.ca = nn.ModuleList([CrossAttention(sm_dim=sm_dim, lg_dim=lg_dim, ca_depth=ca_depth,
+                                    ca_heads=ca_heads, ca_dim_head=ca_dim_head, dropout=dropout) for _ in range(5)])
 
             self.norm_layer0 = torch.nn.BatchNorm2d(256)
             self.norm_layer1 = torch.nn.BatchNorm2d(1)
@@ -417,19 +431,17 @@ class SceneParser(GeneralizedRCNN):
             stack_bboxes = []
             for i in range(5):
 
-                feat = self.sqnet[i](features[i])
-
                 abox_feat, afeat = self.ca[i](
-                    box_features.clone().detach(), feat.detach())
+                    features[i].clone().detach(), box_features.clone().detach())
 
-                afeat = self.exnet[i](afeat)
-                features[i] = self.norm_layer0(features[i] * afeat)
+                features[i][:] = self.norm_layer0(afeat)
 
                 x_obj_features = self.norm_layer1(
                     (box_features * abox_feat).unsqueeze(1)).squeeze(1)
                 stack_bboxes.append(x_obj_features)
 
-            out_box_features = torch.stack(stack_bboxes, dim=0)
+            out_box_features = torch.stack(stack_bboxes, dim=0).mean(dim=0)
+
             for i, p in enumerate(predictions):
                 s = p.get_field('box_features').size(0)
                 p.add_field('box_features', out_box_features[i, :s])
