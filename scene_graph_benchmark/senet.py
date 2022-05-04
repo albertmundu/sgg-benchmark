@@ -15,7 +15,6 @@ class SqueezeLayer(nn.Module):
     def forward(self, x):
         b, c, _, _ = x.size()
         y = self.avg_pool(x).view(b, c)  # squeeze
-        print(y.shape)
         y = self.fc(y).view(b, 1024)  # squeeze
         return y
 

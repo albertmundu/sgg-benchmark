@@ -105,7 +105,7 @@ class SceneParser(GeneralizedRCNN):
             self.sqnet = []
             self.exnet = []
             self.ca = []
-            for i in range(5):
+            for _ in range(5):
                 self.ca.append(CrossTransformerV2(sm_dim=sm_dim, lg_dim=lg_dim, depth=ca_depth,
                                heads=ca_heads, dim_head=ca_dim_head, dropout=dropout))
                 self.sqnet.append(SqueezeLayer(in_channel=256))
@@ -394,59 +394,45 @@ class SceneParser(GeneralizedRCNN):
         # The predictions_pred contains idx_pairs (M*2) and scores (M*Pred_Cat); see Jianwei's code
         # TODO: add force_relations logic
         # pdb.set_trace()
-        if self.attend:
-            boxes = []
 
-            for i, prediction in enumerate(predictions):
-                # break
-                box_features = prediction.get_field('box_features')
-                size = box_features.shape
-                # print(size)
-                if size[0] != 100:
-                    d = (100 // size[0])
-                    r = 100 - size[0] * d
-                    if size[0] < (100 - size[0]):
-                        box_features = torch.cat(
-                            [box_features for _ in range(d)])
-                        if r > 0:
-                            box_features = torch.cat(
-                                [box_features, box_features[:r]])
-                    else:
-                        box_features = torch.cat(
-                            [box_features, box_features[:100 - size[0]]])
-                boxes.append(box_features)
-
-            box_features = torch.stack(boxes, dim=0)
+        # torch.cuda.empty_cache()
 
         if self.attend:
-            boxes = []
+            boxes_per_batch = []
 
             for i, p in enumerate(predictions):
                 bf = p.get_field('box_features')
-                sz = bf.shape
+                n_boxes = bf.shape[0]
 
-            # self.writer.add_graph(
-            #     self.attend, (box_features[:, :1, :], box_features[:, 1:, :]))
+                q = 100 // n_boxes
+                r = 100 - q * n_boxes
+                if q > 1:
+                    bf = bf.repeat(q, 1)
+                if r > 0:
+                    bf = torch.cat((bf, bf[:r]), dim=0)
+                boxes_per_batch.append(bf)
 
-            # import sys
-            # sys.exit(0)
+            box_features = torch.stack(boxes_per_batch, dim=0)
 
-            b, c, w, h = features[4].shape
+            stack_bboxes = []
+            for i in range(5):
 
-            attn_box_features, attn_features = self.cross_attention(
-                box_features.clone().detach(), features[4].view(b, c, w * h).clone().detach())
+                feat = self.sqnet[i](features[i])
 
-            features[4][:] = self.norm(
-                features[4][:] + attn_features.view(b, c, w, h)[:])
+                abox_feat, afeat = self.ca[i](
+                    box_features.clone().detach(), feat.detach())
 
-            x_obj_features = self.norm2(
-                (box_features + attn_box_features).unsqueeze(1)).squeeze(1)
+                afeat = self.exnet[i](afeat)
+                features[i] = self.norm_layer0(features[i] * afeat)
 
+                x_obj_features = self.norm_layer1(
+                    (box_features * abox_feat).unsqueeze(1)).squeeze(1)
+                stack_bboxes.append(x_obj_features)
+
+            out_box_features = torch.stack(stack_bboxes, dim=0)
             for i, p in enumerate(predictions):
                 s = p.get_field('box_features').size(0)
-                p.add_field('box_features', x_obj_features[i][:s])
-
-        # torch.cuda.empty_cache()
+                p.add_field('box_features', out_box_features[i, :s])
 
         # prediction_pairs --> contains the bounding boxes
         x_pairs, prediction_pairs, relation_losses = self.relation_head(
