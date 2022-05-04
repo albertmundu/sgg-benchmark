@@ -19,7 +19,7 @@ from .attribute_head.attribute_head import build_roi_attribute_head
 from torchvision.utils import save_image
 from .cross_vit import Attention, CrossTransformerV2, CrossTransformer
 from .senet import SqueezeLayer, ExcitationLayer
-# import wandb
+import wandb
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -119,7 +119,7 @@ class SceneParser(GeneralizedRCNN):
 
         if self.attend:
             sm_dim, lg_dim = 1024, 1024
-            ca_depth, ca_heads = 2, 4
+            ca_depth, ca_heads = 6, 8
             ca_dim_head = 64
             dropout = 0.1
 

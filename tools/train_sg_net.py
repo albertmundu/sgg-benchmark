@@ -31,7 +31,7 @@ from maskrcnn_benchmark.utils.logger import setup_logger
 from maskrcnn_benchmark.utils.metric_logger import MetricLogger
 from maskrcnn_benchmark.utils.miscellaneous import mkdir, save_config
 from tools.test_sg_net import run_test
-# import wandb
+import wandb
 
 import random
 import numpy as np
@@ -46,7 +46,8 @@ torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 torch.autograd.set_detect_anomaly(True)
 # os.environ['WANDB_SILENT'] = "true"
-# wandb.init(project="sgg-attention-project", entity="ai-breaker")
+wandb.init(project="sgg-attention-project",
+           name="IMP+CA+BS8+6D+8H", entity="teach-robots")
 
 
 def train(cfg, local_rank, distributed):

@@ -1,8 +1,8 @@
 MODEL:
   META_ARCHITECTURE: "SceneParser"
-  WEIGHT: "pretrained_models/visualgenome/imp_usefpFalse_lr0.005_bsz4_featstep2/model_final.pth"
+  WEIGHT: "sgg/pretrained_models/visualgenome/imp_usefpFalse_lr0.005_bsz4_featstep2/model_final.pth"
   USE_FREQ_PRIOR: False
-  FREQ_PRIOR: "vg_tsv/visualgenome/label_danfeiX_clipped.new.freq_prior.npy"
+  FREQ_PRIOR: "sgg/vg_tsv/visualgenome/label_danfeiX_clipped.new.freq_prior.npy"
   RESNETS:
     TRANS_FUNC: "BottleneckWithFixedBatchNorm"
     BACKBONE_OUT_CHANNELS: 256
@@ -87,5 +87,5 @@ TEST:
   OUTPUT_RELATION_FEATURE: False
   OUTPUT_FEATURE: True # need this to output scores_all and box_all
 OUTPUT_DIR: "./models/relation_danfeiX_FPN50/"
-DATA_DIR: "./vg_tsv"
+DATA_DIR: "./sgg/vg_tsv"
 DISTRIBUTED_BACKEND: 'gloo'
